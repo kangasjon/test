@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Random Shape Keyboard Grid</title>
+  <style>
+    body {
+      margin: 0;
+      overflow: hidden;
+      background: black;
+    }
+    canvas {
+      display: block;
+      cursor: crosshair;
+    }
+  </style>
+</head>
+<body>
+<script src="https://cdn.jsdelivr.net/npm/three@0.155.0/build/three.min.js"></script>
+<script>
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+camera.position.z = 80;
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+document.body.appendChild(renderer.domElement);
+
+// GRID SETTINGS
+const rows = 60;
+const cols = 60;
+const spacing = 2;
+const keysLayout = ["qwertyuiop", "asdfghjkl", "zxcvbnm"];
+const activeKeys = new Set();
+const keyShapes = {}; // Map key → shape
+
+// SHAPE FUNCTIONS
+const shapeTypes = ['wave', 'circle', 'diagonal', 'noise', 'ring'];
+
+function getRandomShape() {
+  return shapeTypes[Math.floor(Math.random() * shapeTypes.length)];
+}
+
+function getKeyForGrid(x, y) {
+  const colPerKey = Math.floor(cols / 10);
+  const rowPerRow = Math.floor(rows / 3);
+
+  const rowIndex = Math.floor(y / rowPerRow);
+  const keyRow = keysLayout[rowIndex] || "";
+  const colIndex = Math.floor(x / colPerKey);
+
+  return keyRow[colIndex] || null;
+}
+
+function createLayer(color, zOffset, waveFreq = 0.5, waveAmp = 1) {
+  const geometry = new THREE.BufferGeometry();
+  const positions = [];
+  const keyCodes = [];
+  const gridXY = [];
+
+  for (let y = 0; y < rows; y++) {
+    for (let x = 0; x < cols; x++) {
+      const posX = (x - cols / 2) * spacing;
+      const posY = (y - rows / 2) * spacing;
+      const posZ = zOffset;
+
+      positions.push(posX, posY, posZ);
+      gridXY.push([x, y]);
+
+      const key = getKeyForGrid(x, y);
+      keyCodes.push(key ? key.charCodeAt(0) : 0);
+    }
+  }
+
+  geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+  geometry.setAttribute("keyzone", new THREE.BufferAttribute(new Uint8Array(keyCodes), 1));
+
+  const material = new THREE.PointsMaterial({ color: color, size: 0.6 });
+  const points = new THREE.Points(geometry, material);
+  scene.add(points);
+
+  return { points, waveFreq, waveAmp, zOffset, gridXY };
+}
+
+const layers = [
+  createLayer(0xffffff, 0, 0.5, 1),
+  createLayer(0xff0000, -1.5, 0.7, 0.8),
+  createLayer(0x00ff00, -3, 0.6, 1.2),
+  createLayer(0x0000ff, -4.5, 0.4, 0.6),
+];
+
+function applyShapeBoost(shape, x, y, centerX, centerY, time) {
+  const dx = x - centerX;
+  const dy = y - centerY;
+  const dist = Math.sqrt(dx * dx + dy * dy);
+
+  switch (shape) {
+    case 'wave':
+      return Math.sin(x * 0.3 + time) * 2;
+    case 'circle':
+      return Math.max(0, 3 - dist);
+    case 'diagonal':
+      return (x + y) * 0.05;
+    case 'noise':
+      return (Math.random() - 0.5) * 4;
+    case 'ring':
+      return Math.abs(Math.sin(dist - time * 2)) * 3;
+    default:
+      return 0;
+  }
+}
+
+function animate() {
+  requestAnimationFrame(animate);
+  const time = performance.now() * 0.001;
+
+  layers.forEach(({ points, waveFreq, waveAmp, zOffset, gridXY }) => {
+    const pos = points.geometry.attributes.position;
+    const keyAttr = points.geometry.attributes.keyzone;
+
+    for (let i = 0; i < pos.count; i++) {
+      const [gridX, gridY] = gridXY[i];
+      const keyChar = String.fromCharCode(keyAttr.getX(i)).toLowerCase();
+      const x = pos.getX(i);
+      const y = pos.getY(i);
+
+      const wave = Math.sin(x * waveFreq + time) * Math.cos(y * waveFreq + time);
+      let z = zOffset + wave * waveAmp;
+
+      if (activeKeys.has(keyChar)) {
+        const centerX = (gridX - cols / 2);
+        const centerY = (gridY - rows / 2);
+        const shape = keyShapes[keyChar] || 'wave';
+        z += applyShapeBoost(shape, gridX, gridY, cols / 2, rows / 2, time);
+      }
+
+      pos.setZ(i, z);
+    }
+
+    pos.needsUpdate = true;
+  });
+
+  renderer.render(scene, camera);
+}
+
+animate();
+
+// 🔑 Key Tracking + Random Shapes
+window.addEventListener("keydown", (e) => {
+  const key = e.key.toLowerCase();
+  if (!activeKeys.has(key)) {
+    activeKeys.add(key);
+    keyShapes[key] = getRandomShape(); // assign a shape on press
+  }
+});
+window.addEventListener("keyup", (e) => {
+  const key = e.key.toLowerCase();
+  activeKeys.delete(key);
+});
+window.addEventListener("resize", () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+</script>
+</body>
+</html>
