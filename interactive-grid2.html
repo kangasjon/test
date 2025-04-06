@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Keyboard Grid Pressure Waves</title>
+  <style>
+    body {
+      margin: 0;
+      overflow: hidden;
+      background: black;
+      font-family: sans-serif;
+    }
+    canvas {
+      display: block;
+    }
+    #ui {
+      position: absolute;
+      bottom: 40px;
+      left: 0;
+      right: 0;
+      background: rgba(0, 0, 0, 0.85);
+      padding: 10px;
+      color: white;
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 20px;
+      z-index: 999;
+    }
+    .knob {
+      display: flex;
+      flex-direction: column-reverse;
+      align-items: center;
+      font-size: 12px;
+    }
+    .knob button {
+      width: 40px;
+      height: 40px;
+      background: white;
+      color: black;
+      font-weight: bold;
+      border: none;
+      border-radius: 0;
+      cursor: pointer;
+      margin-top: 4px;
+    }
+    #controlButtons {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      display: flex;
+      justify-content: center;
+      gap: 10px;
+      padding: 5px;
+      background: rgba(0, 0, 0, 0.85);
+      z-index: 1000;
+    }
+    .control-btn {
+      width: 80px;
+      height: 30px;
+      background: white;
+      color: black;
+      font-weight: bold;
+      border: none;
+      border-radius: 0;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+<div id="ui"></div>
+<div id="controlButtons">
+  <button class="control-btn" id="startBtn">Start</button>
+  <button class="control-btn" id="stopBtn">Stop</button>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/three@0.155.0/build/three.min.js"></script>
+<script>
+const paramDefs = [
+  ["waveIntensity", 50],
+  ["pressureMultiplier", 50],
+  ["decayRate", 95],
+  ["waveSpeed", 50],
+  ["zoom", 80],
+  ["dotSize", 6],
+  ["spacing", 2],
+  ["waveFreqScale", 50],
+  ["colorSpeed", 0],
+  ["pulseStrength", 50],
+  ["noiseAmount", 0]
+];
+
+const ui = {};
+const uiPanel = document.getElementById("ui");
+
+paramDefs.forEach(([id, value]) => {
+  const container = document.createElement("div");
+  container.className = "knob";
+  const label = document.createElement("label");
+  label.textContent = id;
+  const button = document.createElement("button");
+  button.onclick = () => {
+    let current = parseInt(ui[id].value);
+    current = (current + 10) % 110;
+    if (current > 100) current = 0;
+    ui[id].value = current;
+  };
+  const hidden = document.createElement("input");
+  hidden.type = "hidden";
+  hidden.value = value;
+  hidden.id = id;
+  container.appendChild(button);
+  container.appendChild(label);
+  container.appendChild(hidden);
+  uiPanel.appendChild(container);
+  ui[id] = hidden;
+});
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+document.body.appendChild(renderer.domElement);
+
+const rows = 60;
+const cols = 60;
+let spacing = 2;
+let cameraZoom = 80;
+camera.position.z = cameraZoom;
+
+const pressureMap = new Array(rows * cols).fill(0);
+
+function createLayer(color, zOffset, waveFreq = 0.5, waveAmp = 1) {
+  const geometry = new THREE.BufferGeometry();
+  const positions = [];
+  const gridXY = [];
+  for (let y = 0; y < rows; y++) {
+    for (let x = 0; x < cols; x++) {
+      const posX = (x - cols / 2) * spacing;
+      const posY = (y - rows / 2) * spacing;
+      const posZ = zOffset;
+      positions.push(posX, posY, posZ);
+      gridXY.push([x, y]);
+    }
+  }
+  geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+  const material = new THREE.PointsMaterial({ color: color, size: parseFloat(ui.dotSize.value) / 10 });
+  const points = new THREE.Points(geometry, material);
+  scene.add(points);
+  return { points, waveFreq, waveAmp, zOffset, gridXY };
+}
+
+let layers = [];
+function recreateLayers() {
+  layers.forEach(layer => scene.remove(layer.points));
+  layers = [
+    createLayer(0xffffff, 0, 0.5, 1),
+    createLayer(0xff0000, -1.5, 0.7, 0.8),
+    createLayer(0x00ff00, -3, 0.6, 1.2),
+    createLayer(0x0000ff, -4.5, 0.4, 0.6),
+  ];
+}
+recreateLayers();
+
+let isAnimating = true;
+function animate() {
+  if (!isAnimating) return;
+  requestAnimationFrame(animate);
+  const time = performance.now() * 0.001 * parseFloat(ui.waveSpeed.value) / 50;
+  const intensity = parseFloat(ui.waveIntensity.value) / 50;
+  const multiplier = parseFloat(ui.pressureMultiplier.value) / 50;
+  const freqScale = parseFloat(ui.waveFreqScale.value) / 50;
+  const dotSize = parseFloat(ui.dotSize.value) / 10;
+  spacing = parseFloat(ui.spacing.value);
+  cameraZoom = parseFloat(ui.zoom.value);
+  camera.position.z = cameraZoom;
+
+  layers.forEach(({ points, waveFreq, waveAmp, zOffset, gridXY }) => {
+    points.material.size = dotSize;
+    const pos = points.geometry.attributes.position;
+    for (let i = 0; i < pos.count; i++) {
+      const [gridX, gridY] = gridXY[i];
+      const pressure = pressureMap[gridY * cols + gridX] || 0;
+      const x = pos.getX(i);
+      const y = pos.getY(i);
+      const baseWave = Math.sin(x * waveFreq * freqScale + time) * Math.cos(y * waveFreq * freqScale + time);
+      const pressureWave = baseWave * (1 + pressure * multiplier);
+      const z = zOffset + pressureWave * waveAmp * intensity;
+      pos.setZ(i, z);
+    }
+    pos.needsUpdate = true;
+  });
+  renderer.render(scene, camera);
+}
+
+animate();
+
+document.getElementById("startBtn").onclick = () => {
+  if (!isAnimating) {
+    isAnimating = true;
+    animate();
+  }
+};
+
+document.getElementById("stopBtn").onclick = () => {
+  isAnimating = false;
+};
+
+window.addEventListener("keydown", (e) => {
+  const key = e.key.toLowerCase();
+  const keyIndex = key.charCodeAt(0);
+  const decay = parseFloat(ui.decayRate.value) / 100;
+  for (let i = 0; i < pressureMap.length; i++) {
+    pressureMap[i] *= decay;
+  }
+  const zone = keyIndex % cols;
+  for (let y = 0; y < rows; y++) {
+    const index = y * cols + zone;
+    pressureMap[index] += parseFloat(ui.pulseStrength.value) / 100;
+  }
+});
+
+window.addEventListener("resize", () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+</script>
+</body>
+</html>
