@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <title>Dual Halftone Boxes - Mobile</title>
+  <title>Dual Halftone Boxes - Mobile Vertical with Touch</title>
   <style>
     body {
       margin: 0;
@@ -47,8 +47,15 @@
 <script src="https://cdn.jsdelivr.net/npm/three@0.155.0/build/three.min.js"></script>
 <script>
   const scene = new THREE.Scene();
-  const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-  camera.position.z = 7;
+  const camera = new THREE.OrthographicCamera(
+    window.innerWidth / -200,
+    window.innerWidth / 200,
+    window.innerHeight / 200,
+    window.innerHeight / -200,
+    0.1,
+    1000
+  );
+  camera.position.z = 10;
 
   const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
   renderer.setSize(window.innerWidth, window.innerHeight);
@@ -60,14 +67,14 @@
   const boxes = [];
   let boxTimer = 0;
   const spawnInterval = 15;
-  const moveSpeed = 0.015;
+  let moveSpeed = 0.015;
   let runAnimation = true;
 
   function random(min, max) {
     return Math.random() * (max - min) + min;
   }
 
-  function addBox(xOffset = 6) {
+  function addBox(xOffset = -7) {
     const colorMat = new THREE.MeshBasicMaterial({
       color: new THREE.Color(Math.random(), Math.random(), Math.random()),
       transparent: true,
@@ -106,12 +113,12 @@
     boxTimer++;
     if (boxTimer >= spawnInterval) {
       boxTimer = 0;
-      addBox(7 + Math.random() * 1.5);
+      addBox(-7 - Math.random() * 1.5);
     }
 
     boxes.forEach((box) => {
-      box.position.x -= moveSpeed;
-      if (box.position.x < -6) {
+      box.position.x += moveSpeed;
+      if (box.position.x > 6 || box.position.x < -6) {
         box.material.forEach(mat => mat.opacity -= 0.02);
       }
     });
@@ -140,11 +147,26 @@
   };
 
   window.addEventListener("resize", () => {
-    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.left = window.innerWidth / -200;
+    camera.right = window.innerWidth / 200;
+    camera.top = window.innerHeight / 200;
+    camera.bottom = window.innerHeight / -200;
     camera.updateProjectionMatrix();
     renderer.setSize(window.innerWidth, window.innerHeight);
+  });
+
+  // Touch swipe to control direction
+  let startX = 0;
+  window.addEventListener('touchstart', (e) => {
+    startX = e.touches[0].clientX;
+  });
+  window.addEventListener('touchend', (e) => {
+    const endX = e.changedTouches[0].clientX;
+    const diff = endX - startX;
+    if (Math.abs(diff) > 30) {
+      moveSpeed = diff > 0 ? Math.abs(moveSpeed) : -Math.abs(moveSpeed);
+    }
   });
 </script>
 </body>
 </html>
-
